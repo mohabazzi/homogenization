@@ -49,7 +49,7 @@ Correspondence and requests for materials should be addressed to J.A.A [Contact]
 ## Libraries
 
 ```{r message=FALSE}
-rpkg <- c("dplyr ggplot2 readr boot divvy terra divDyn paleobioDB conflicted
+rpkg <- c("dplyr ggplot2 readr boot divvy terra divDyn paleobioDB conflicted piggyback
           CoordinateCleaner fossilbrush icosa tidyr tibble readr purrr downloadthis")
 
 import_pkg <- function(x)
@@ -66,9 +66,9 @@ conflicted::conflict_prefer(name = "filter", winner = "dplyr",losers = "stats")
 ## Custom functions
 
 ```{r}
-#' @return calculate great circle distance in km
+#' @return calculate great circle distance in kilometers (km).
 #' @param R Earth mean radius (km)
-#' @param long1.r convert from degrees to radians for lats and longs
+#' @param long1.r convert from degrees to radians for latitudes and longitudes.
 #' @export
 
 gcd.slc <- function(long1, lat1, long2, lat2) {
@@ -78,7 +78,8 @@ gcd.slc <- function(long1, lat1, long2, lat2) {
   lat1.r <- lat1*pi/180
   lat2.r <- lat2*pi/180
   d <- acos(sin(lat1.r)*sin(lat2.r) + cos(lat1.r)*cos(lat2.r) * cos(long2.r-long1.r)) * R
-  return(d) }
+  return(d) 
+  }
 
 #' @return calculate confidence and prediction intervals
 #' @param 
@@ -132,7 +133,7 @@ jaccard_similarity <- function(x) {
       # Intersections.
       intersection <- length(generics::intersect(unique_names_cell_x, unique_names_cell_y))
       Un <- length(generics::union(unique_names_cell_x, unique_names_cell_y))
-      jaccard_similarity <- intersection / Un
+      jaccard_similarity <- intersection/Un
       # Combine results.
       jaccard_similarity_table <- rbind(jaccard_similarity_table, data.frame(cell_x = cell_x, cell_y = cell_y, jaccard_similarity = jaccard_similarity))
     }
@@ -161,7 +162,7 @@ Testing coordinate validity resulted in the removal of 17 records.
 ```{r message=FALSE}
 # Read occurrence dataset.
 pbdb <- 
-  openxlsx::read.xlsx(xlsxFile = "pbdb.xlsx") |> 
+  openxlsx::read.xlsx(xlsxFile = "_data/pbdb.xlsx") |> 
   # Keep two classes and select the Induan and Changhsingian.
   filter(class %in% c("Gastropoda","Bivalvia"),
          interval.ma %in% c("252.17","251.2")) |> 
@@ -195,7 +196,7 @@ pbdb |>
 
 ## Data pre-processing
 
-Needs to explain why degress is set to five. 13 cells in the Changhsingian and 20 in the Induan.
+Needs to explain why degrees is set to five.
 
 ```{r message=FALSE}
 # Create equal-area icosahedral hexagonal cells.
@@ -298,7 +299,7 @@ pbdb |>
         strip.text = element_text(face = "bold"))
 ```
 
-For each stage we create individual dataframes based on cell units and store these into separate lists.
+For each stage we create individual dataframes based on the cell units and store these into separate lists.
 
 ```{r}
 # Data splitting based on cell id and stage.
@@ -317,7 +318,7 @@ induan_split <-
 
 ## Subsampling by cells and occurence  
 
-Here we perform bootstrap subsampling without replacement on our stage-level datasets using 999 iterations. For the Changhsingian we randomly sampled 20 occurrences per cell and repeated the process as stated above. Conversely, for the Induan, we applied a two-step subsampling procedure by first subsampling down to 13 cells and then by occurrences. The results are bootstrapped datasets (cell-specific) saved as nested objects within a larger list. These are subsequently, merged into single master dataframes (i.e., the cells) to create one single list containing 999 dataframes.
+Here we perform bootstrap subsampling without replacement on our stage-level datasets using 999 iterations. For the Changhsingian we randomly sample 20 occurrences per cell and repeated the process as stated above. Conversely, for the Induan, we applied a two-step subsampling procedure by first subsampling down to 13 cells and then by occurrences. The results are bootstrapped datasets (cell-specific) saved as nested objects within a larger list. These are subsequently, merged into single master dataframes (i.e., the cells) to create one single list containing 999 dataframes.
 
 ```{r}
 # Changhsingian.
@@ -341,27 +342,25 @@ boot_induan <- purrr::map(1:999, ~ { induan_split |>
 )
 ```
 
-As indicated in the previous section, we here we combine cell-specific dataframes (N=13) into single joint dataframes (13*20 = 260 rows). This is repeated for all 999 sub-sampled dataframes. Worthy of note, the cells in the Induan list, will inevitably vary between the subsampled datasets, whereas, in the case of the Changhsingian they are all identical. This is because our analysis seeks to assess the impact by cell heterogeneity across geologic stages.
+As indicated in the previous section, we here combine cell-specific dataframes (N=13) into single joint dataframes (13*20 = 260 rows). This is repeated for all 999 sub-sampled dataframes. Worthy of note, the cells in the Induan list, will inevitably vary between the subsampled datasets, whereas, in the case of the Changhsingian they are all identical. This is because our analysis seeks to assess the impact by cell heterogeneity across geologic stages.
 
 ```{r}
 # Changhsingian
-combined_boot_changhsingian <- list()
+combined_boot_changhsingian <- 
+  list()
 
 for(i in seq_along(boot_changhsingian)) {
-  
   pC <- purrr::map_dfr(boot_changhsingian[[i]], bind_rows)
   combined_boot_changhsingian[[i]] <- pC
-  
 }
 
 # Induan
-combined_boot_induan <- list()
+combined_boot_induan <- 
+  list()
 
 for(i in seq_along(boot_induan)) {
-  
   pI <- purrr::map_dfr(boot_induan[[i]], bind_rows)
   combined_boot_induan[[i]] <- pI
-  
 }
 ```
 
@@ -386,7 +385,7 @@ in_count_ls <-
 ### Unique cell pairs
 
 ```{r}
-# Changhsingian & Induan
+# Changhsingian & Induan.
 cells_distinct_c <- 
   tibble(unique(ch_count_ls$cell)) |> setNames(nm = "x") |> 
   mutate(n_part = as.numeric(sub("F", "", x))) |> 
@@ -415,82 +414,43 @@ cells_distinct_pair_in <-
 
 ### Jaccard indices
 
+**The Jaccard similiary equation**
+
+$$
+J(A,B) = \frac{|A \cap B|}{|A \cup B|}
+$$
 ```{r message=FALSE}
-# Changhsingian
+# Changhsingian.
 changhsingian_jaccard <- 
   jaccard_similarity(combined_boot_changhsingian)
 
 # Induan
 induan_jaccard <- 
   jaccard_similarity(combined_boot_induan)
+```
 
+```{r message=FALSE}
 # Average similarity for each cell-pair and stage.
+
+# Changhsingian.
 ave_changhsingian_jaccard <- 
   bind_rows(changhsingian_jaccard) |>
   group_by(cell_x, cell_y) |> 
   summarise(avg_jaccard = mean(jaccard_similarity)) |> 
   rename("x.cell" = "cell_x", "y.cell" = "cell_y")
 
+# Induan
 ave_induan_jaccard <- 
   bind_rows(induan_jaccard) |>
   group_by(cell_x, cell_y) |> 
   summarise(avg_jaccard = mean(jaccard_similarity)) |> 
   rename("x.cell" = "cell_x", "y.cell" = "cell_y")
-
-# Plots.
-
-# 1. Distribution plot.
-
-# bind_rows(changhsingian_jaccard) |>
-#   group_by(cell_x, cell_y) |>
-#   mutate(cell_pair = paste(cell_x, cell_y, sep = "-")) |> 
-#   ggplot(aes(x = jaccard_similarity)) +
-#   geom_histogram(binwidth = 0.01, fill = "#2D716F", color = "#2D716F",position = position_dodge(preserve = "single")) +
-#   labs(title = "Frequency histogram",subtitle = "Bootstrapped cell-pair jaccard similarity",
-#        x = "Jaccard Similarity",
-#        y = "Frequency") +
-#   facet_wrap(~ cell_pair, scales = "free") +
-#   theme_minimal()
-
-# 2.Average jaccard similarity of cell pairs.
-
-# ave_changhsingian_jaccard |> 
-#   mutate(cell_pair = paste0(x.cell,"-", y.cell),
-#          no_similarity = ifelse(avg_jaccard == 0,"No similarity","Similarity")) |> 
-#   ggplot(mapping = aes(x = cell_pair, y = avg_jaccard)) +
-#   geom_segment(aes(xend = cell_pair, yend=0)) +
-#   geom_point(size = 2, color = "#7F2D48", fill = alpha("grey20", 0.3), alpha = 0.7, shape = 21) +
-#   labs(x = "Cell-pair",  y = "Average jaccard similarity", title = "Changhsingian") +
-#   coord_flip() +
-#   theme_minimal() +
-#   theme(axis.title = element_text(face = "bold",size = 8),
-#         axis.text = element_text(size = 6),
-#         plot.title = element_text(face = "bold",size = 10),
-#         strip.text = element_text(face = "bold"),
-#         aspect.ratio = 1) +
-#   facet_wrap(.~no_similarity,scales = "free")
-
-# 3. Induan (as above)
-
-# ave_induan_jaccard |> 
-#   mutate(cell_pair = paste0(x.cell,"-", y.cell)) |> 
-#   ggplot(mapping = aes(x = cell_pair, y = avg_jaccard)) +
-#   geom_segment(aes(xend = cell_pair, yend=0)) +
-#   geom_point(size = 2, color = "#7F2D48", fill = alpha("grey20", 0.3), alpha = 0.7, shape = 21) +
-#   labs(x = "Cell-pair",  y = "Average jaccard similarity", title = "Induan") +
-#   coord_flip() +
-#   theme_classic() +
-#   theme(axis.title = element_text(face = "bold",size = 8),
-#         axis.text = element_text(size = 6),
-#         plot.title = element_text(face = "bold",size = 10),
-#         strip.text = element_text(face = "bold"),
-#         aspect.ratio = 1)
 ```
 
 ### Great circle distance
 
 ```{r}
-# Changhsingian
+# Changhsingian.
 changhsingian_res_matrix <- cells_distinct_pair_ch |> 
   # X-coordinates
   left_join(pbdb |> select(cell,long,lat), by = c("x" = "cell"),relationship = "many-to-many") |> 
@@ -505,7 +465,7 @@ changhsingian_res_matrix <- cells_distinct_pair_ch |>
   mutate(gcd = gcd.slc(long1 = x_long,lat1 = x_lat,long2 = y_long,lat2 = y_lat)) |> 
   as.data.frame()
 
-# Induan
+# Induan.
 induan_res_matrix <- cells_distinct_pair_in |> 
   # X-coordinates
   left_join(pbdb |> select(cell,long,lat), by = c("x" = "cell"),relationship = "many-to-many") |> 
@@ -521,74 +481,116 @@ induan_res_matrix <- cells_distinct_pair_in |>
   as.data.frame()
 ```
 
-### Czekanowski index
+### Czekanowski indices
 
-#### Changhsingian
+**Czekanowski equation**
+
+$$ Czekanowski = 2 * \frac{\sum \min(x_{1k}, x_{2k})}{\sum x_{1k} + \sum x_{2k}} $$
+The occurrence of a given taxa between distinct cells are evaluated against each other. We first define a dataframe that list all the unique cells and unique taxon name for each stage-level dataframe. For the 
 
 ```{r}
-# Combinations of cells and accepted names.
-# Results in a dataframe with 1404 rows. 108 (unique genera) * 13 unique cells.
-changhsingian_combs <- 
-  expand.grid(
-  cell = unique(combined_boot_changhsingian[[1]]$cell),
-  accepted_name = unique(combined_boot_changhsingian[[1]]$accepted_name)
-)
-
-# Count the occurrence of genera per unique cell. This will include genera with no occurrence in any given cell.
-# These are removed in the next step.
-
-changhsingian_genera_count_cell <- vector(mode = "list")
-
-for(i in seq_along(combined_boot_changhsingian)) {
-
-  nameCounts <- changhsingian_combs |>
-  left_join(combined_boot_changhsingian[[i]] |> group_by(cell, accepted_name) |> count(), by = c("cell", "accepted_name")) |> 
-  replace_na(list(n = 0))
-  
-  changhsingian_genera_count_cell[[i]] <- nameCounts
+# Count function.
+gridComb <- function(x, cell, accepted_name) {
+  cA <- expand.grid(cell = unique(x$cell), unique(x$accepted_name)) |> setNames(nm = c("cell","accepted_name"))
+  return(cA)
 }
 
-# Join against the cell pair dataframe.
-# All unique genera and their count across each unique cell.
-cell_ls <- 
-  purrr::map(changhsingian_genera_count_cell, ~ .x |>  pivot_wider(names_from = cell, values_from = n, values_fill = list(n = 0)))
+# Changhsingian.
+cha_combs <- gridComb(x = changhsingian_pbdb,cell = cell,accepted_name = accepted_name) # 13*221 = 2873 rows.
+# Induan.
+ind_combs <- gridComb(x = induan_pbdb,cell = cell,accepted_name = accepted_name) # 20*93 = 1860 rows.
 
-# Create two count data for each pair to join against.
+# Next count the occurrence of genera per unique cell. This will also include genera with no occurrence in any given cell (i.e. 0).
+# These are subsequently removed in the next step.
+countGen <- function(combinations, age_lists) {
+  purrr::map(seq_along(age_lists), function(i) {
+    name_counts <- 
+      combinations |> 
+      left_join(age_lists[[i]] |>  group_by(cell, accepted_name) |> count(), by = c("cell", "accepted_name")) |> 
+      # Replace NA with 0.
+      replace_na(list(n = 0))
+    return(name_counts)
+  })
+}
 
-changhsingian_count_lsX <- purrr::map(changhsingian_genera_count_cell, ~ .x |> rename(cell_x = cell, count_cell_x = n))
-changhsingian_count_lsY <- purrr::map(changhsingian_genera_count_cell, ~ .x |> rename(cell_y = cell, count_cell_y = n))
+# Changhsingian.
+cha_genCell <- countGen(combinations = cha_combs ,age_lists = combined_boot_changhsingian)
+# Induan.
+ind_genCell <- countGen(combinations = ind_combs ,age_lists = combined_boot_induan)
+
+# Create two identical count dataframes for each pair to join against.
+
+# Changhsingian.
+changhsingian_count_lsX <- purrr::map(cha_genCell, ~ .x |> rename("cell_x" = "cell", "count_cell_x" = "n"))
+changhsingian_count_lsY <- purrr::map(cha_genCell, ~ .x |> rename("cell_y" = "cell", "count_cell_y" = "n"))
+# Induan.
+induan_count_lsX <- purrr::map(ind_genCell, ~ .x |> rename("cell_x" = "cell", "count_cell_x" = "n"))
+induan_count_lsY <- purrr::map(ind_genCell, ~ .x |> rename("cell_y" = "cell", "count_cell_y" = "n"))
 
 # Merge counts for each cell pair.
-changhsingian_count_merge <- 
+mCount <- function(cell_pairs, X, Y) {
+  
   purrr::map(1:999, function(i) {
-    cells_distinct_pair_ch |> rename("cell_x" = "x", "cell_y" = "y") |> 
-    left_join(changhsingian_count_lsX[[i]], by = "cell_x", relationship = "many-to-many") %>%
-    left_join(changhsingian_count_lsY[[i]], by = c("cell_y", "accepted_name")) %>%
-    select(cell_x, cell_y, accepted_name, count_cell_x, count_cell_y)
-})
+    # Rename the fields so that it matches.
+    oG <- 
+      cell_pairs |> rename("cell_x" = "x", "cell_y" = "y") |> 
+      # First join (x)
+      left_join(X[[i]], by = "cell_x", relationship = "many-to-many") |> 
+      # Second join (y) 
+      left_join(Y[[i]], by = c("cell_y", "accepted_name")) |> 
+      select("cell_x", "cell_y", "accepted_name", "count_cell_x", "count_cell_y")
+    
+    return(oG)
+  })
+}
 
-# Split based on distinct cell pairs. This will creates a nested list with 78 splits for each dataframe i.e. 999.
-czekanowski_splits <- purrr::map(1:999, function(i) {
-  changhsingian_count_merge[[i]] |>
+# Changhsingian.
+cha_joined <- mCount(cell_pairs = cells_distinct_pair_ch,X = changhsingian_count_lsX, Y = changhsingian_count_lsY)
+# Induan.
+ind_joined <- mCount(cell_pairs = cells_distinct_pair_in,X = induan_count_lsX, Y = induan_count_lsY)
+
+# We then split based on distinct cell pairs. This will creates a nested list with X splits (78 for changhsingian and
+# 190 for the Induan) each dataframe i.e. 999. We also remove any genera (i.e. accepted name) were 0 occurrences is recorded between cell pairs.
+# This step also add a new field (the minimum field) which is based on the lowest number occurrences of a particular taxa between two cells.
+
+czekanowski_splits <- function(joined_lists) {
+  
+  purrr::map(1:999, function(i) {
+  oP <- joined_lists[[i]] |>
     # Remove
     filter(!(count_cell_x == 0 & count_cell_y == 0)) |> 
     # Compute the minimum value between cell x and cell y (use count variable)
     mutate(minimum = pmin(count_cell_x, count_cell_y)) |> 
-    group_by(cell_x, cell_y) |>  group_split()
+    group_by(cell_x, cell_y) |>  
+    group_split()
+  
+  return(oP)
   })
+}
+
+cz_cha_prep <- czekanowski_splits(cha_joined)
+cz_ind_prep <- czekanowski_splits(ind_joined) # May or may have not worked. Return back to this step.
 
 # Compute the czekanowski index.
 changhsingian_czekanowski <- vector(mode = "list")
-
-for(i in seq_along(czekanowski_splits)) {
-  cz <- lapply(czekanowski_splits[[i]], czekanowski_similarity)
+for(i in seq_along(cz_cha_prep)) {
+  cz <- lapply(cz_cha_prep[[i]], czekanowski_similarity)
   changhsingian_czekanowski[[i]] <- cz
 }
 
-# Cell pairs.
-pairs_cha <- do.call("rbind",lapply(czekanowski_splits[[1]], function(x) x[1:2][1,]))
+induan_czekanowski <- vector(mode = "list")
+for(i in seq_along(cz_ind_prep)) {
+  czI <- lapply(cz_ind_prep[[i]], czekanowski_similarity)
+  induan_czekanowski[[i]] <- czI
+}
 
-cz_results <- 
+# Cell pairs.
+pairs_cha <- do.call("rbind",lapply(cz_cha_prep[[1]], function(x) x[1:2][1,]))
+
+# What about the Induan??
+
+# Reformat 
+cha_cz_results <- 
   purrr::map(changhsingian_czekanowski, ~as.data.frame(unlist(.x)) |> 
                rename("cz" = 1) |>
                cbind(pairs_cha) |> 
@@ -597,10 +599,10 @@ cz_results <-
              )
 
 # Compute the average czekanowski per cell pair
-czekanowski_dataframe <- bind_rows(cz_results)
+# czekanowski_dataframe <- bind_rows(cz_results)
 ```
 
-### Time-series visualization
+### Results
 
 ```{r}
 # Changhsingian
@@ -676,10 +678,13 @@ sumRes_03 |>
   geom_line() +
   scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
+  # Joods colour of choise.
+  scale_fill_manual(values = c("hotpink","red4")) + 
+  scale_color_manual(values = c("hotpink","red4")) + 
   labs(x = "Great Circle Distance", 
        y = "Average Value",
-       title = "Bootstrapped Jaccard",
-       subtitle = "Subsampled to 13 cells with 20 randomized occurrences each") +
+       title = "Jaccard similarity index",
+       subtitle = "Bootstrap results from subsampling by cells and occurrences") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"),
         axis.title = element_text(face = "bold"),
@@ -689,57 +694,55 @@ sumRes_03 |>
 <!-- Notes -->
 
 ```{r}
-changhsingian_res_matrix <- 
-  changhsingian_res_matrix |> 
-  left_join(
-    czekanowski_dataframe |> 
-      group_by(x.cell,y.cell) |> 
-      summarise(avg_cz =  mean(cz, na.rm = TRUE)), by = c("x.cell","y.cell")) |> 
-  relocate(.after = "avg_jaccard","avg_cz")
+# changhsingian_res_matrix <- 
+#   changhsingian_res_matrix |> 
+#   left_join(
+#     czekanowski_dataframe |> 
+#       group_by(x.cell,y.cell) |> 
+#       summarise(avg_cz =  mean(cz, na.rm = TRUE)), by = c("x.cell","y.cell")) |> 
+#   relocate(.after = "avg_jaccard","avg_cz")
 
 # Average and sd for Changhsingian.
-sumRes_04 <- 
-  changhsingian_res_matrix |> 
-  group_by(cutdist) |> 
-  summarise(
-    avg =  mean(avg_cz, na.rm = TRUE),
-    sdev = sd(avg_cz, na.rm = TRUE),
-    n = n(),
-    se = sdev/sqrt(n)
-  ) |> 
-  mutate(label = 'Changhsingian',label = as.factor(label)) |> 
-  mutate(cutdist = cutdist,
-         cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
-  mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
-  as.data.frame() |> suppressWarnings() # This was added to ignore the last observation.
+
+# sumRes_04 <- 
+#   changhsingian_res_matrix |> 
+#   group_by(cutdist) |> 
+#   summarise(
+#     avg =  mean(avg_cz, na.rm = TRUE),
+#     sdev = sd(avg_cz, na.rm = TRUE),
+#     n = n(),
+#     se = sdev/sqrt(n)
+#   ) |> 
+#   mutate(label = 'Changhsingian',label = as.factor(label)) |> 
+#   mutate(cutdist = cutdist,
+#          cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
+#   mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
+#   as.data.frame() |> suppressWarnings() # This was added to ignore the last observation.
 
 
 # Plot.
-sumRes_04 |> 
-  ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
-  geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
-  geom_line() +
-  # scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
-  geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
-  labs(x = "Great Circle Distance", 
-       y = "Average Value",
-       title = "Bootstrapped Czekanowski",
-       subtitle = "Subsampled to 13 cells with 20 randomized occurrences each") +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold"),
-        axis.title = element_text(face = "bold"),
-        aspect.ratio = 1)
+# sumRes_04 |> 
+#   ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
+#   geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
+#   geom_line() +
+#   # scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
+#   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
+#   labs(x = "Great Circle Distance", 
+#        y = "Average Value",
+#        title = "Bootstrapped Czekanowski",
+#        subtitle = "Subsampled to 13 cells with 20 randomized occurrences each") +
+#   theme_minimal() +
+#   theme(plot.title = element_text(face = "bold"),
+#         axis.title = element_text(face = "bold"),
+#         aspect.ratio = 1)
 ```
 
 ## Randomizing locations
 
 ```{r}
 
-pbdb |> View()
-
 ```
 
 
 ## Download data
 
-{{< downloadthis pbdb.csv dname="Paleobiology Database" label="Download pbdb data as .csv" icon="file-earmark-spreadsheet" type="success" >}}
