@@ -153,6 +153,46 @@ jaccard_similarity <- function(x) {
 czekanowski_similarity <- function(x) {
   2*abs(sum(x$minimum))/((sum(x$count_cell_x) + sum(x$count_cell_y)))
 }
+
+# Cross-join function.
+gridComb <- function(x, cell, accepted_name) {
+  cA <- expand.grid(cell = unique(x$cell), unique(x$accepted_name)) |> setNames(nm = c("cell","accepted_name"))
+  return(cA)
+}
+
+# Count taxon occurrence per uqniue cell combination.
+czekanowski_data_prep <- function(x, cell, accepted_name) {  
+  
+  count_taxa_x <- x |> 
+    group_by(cell, accepted_name) |>
+    summarize(count = n(), .groups = 'drop') |> rename("cell_x" = "cell", "count_cell_x" ="count")
+  
+  count_taxa_y <- x |> 
+    group_by(cell, accepted_name) |>
+    summarize(count = n(), .groups = 'drop') |> rename("cell_y" = "cell", "count_cell_y" ="count")
+
+  # Cell pairs.
+  cell <- unique(x[[cell]])
+  taxa <- unique(x[[accepted_name]])
+  
+  cell_combinations <- expand.grid(cell_x = cell, cell_y = cell,accepted_name = taxa) |>  filter(cell_x != cell_y)
+  
+  result <- cell_combinations |> 
+    left_join(count_taxa_x, by = c("cell_x","accepted_name"), relationship = "many-to-many") |> 
+    # Second join (y) 
+    left_join(count_taxa_y, by = c("cell_y", "accepted_name")) |> 
+    select("cell_x", "cell_y", "accepted_name", "count_cell_x", "count_cell_y") |>
+    # Replace NA with 0
+    replace_na(replace = list(count_cell_x = 0, count_cell_y = 0)) |> 
+    # Remove rows that at 0 in both count fields.
+    filter(!(count_cell_x == 0 & count_cell_y == 0)) |> 
+    # Remove duplicated cell combinations
+    filter(cell_x == cell_y | cell_x > cell_y) |> 
+    # Split by cell combination
+    group_split(cell_x,cell_y)
+    
+    return(result)
+}
 ```
 
 ## Paleobiology Database
@@ -488,12 +528,6 @@ $$ Czekanowski = 2 * \frac{\sum \min(x_{1k}, x_{2k})}{\sum x_{1k} + \sum x_{2k}}
 The occurrence of a given taxa between distinct cells are evaluated against each other. We first define a dataframe that list all the unique cells and unique taxon name for each stage-level dataframe.
 
 ```{r}
-# Count function.
-gridComb <- function(x, cell, accepted_name) {
-  cA <- expand.grid(cell = unique(x$cell), unique(x$accepted_name)) |> setNames(nm = c("cell","accepted_name"))
-  return(cA)
-}
-
 # Changhsingian.
 cha_combs <- gridComb(x = changhsingian_pbdb,cell = cell,accepted_name = accepted_name) # 13*221 = 2873 rows.
 # Induan.
@@ -785,12 +819,9 @@ sumRes_06 |>
 
 ## Sensitivty analysis
 
-This section needs to be explained.
+Similarity measurements by survival status.
 
 ```{r}
-#' @ex=1 in the pbdb are the victims.
-#' @ex=0 in the pbdb are the survivors.
-
 # Retain occurrences with or greater than 15.
 pbdb_sensitivity <- 
   pbdb |> 
@@ -802,7 +833,7 @@ sI <- pbdb_sensitivity |>
   group_split(cell_id) |> lapply(as.data.frame)
 
 sV <- pbdb_sensitivity |>
-  filter(early_interval == "Induan" & ex==1 & fad >= 252.17) |>
+  filter(early_interval == "Changhsingian" & ex==1) |>
   group_split(cell_id) |> lapply(as.data.frame)
 
 # Changhsingian survivals.
@@ -811,7 +842,7 @@ sC <- pbdb_sensitivity |> filter(early_interval  == "Changhsingian" & ex==0) |>
 
 # Bootstrap subsampling.
 subsampling_fun <-
-  function(x, n_boot = 999, sample_size = 13, seed = 5) {
+  function(x, n_boot = 999, sample_size = 12, seed = 5) {
   set.seed(seed)
   # Bootstrap samples.
   boot_samples <- purrr::map(1:n_boot, ~ sample(x, sample_size, replace = FALSE))
@@ -820,6 +851,7 @@ subsampling_fun <-
   
   return(comb_samples)
 }
+
 
 # Subsampled data.
 sI_boot <- subsampling_fun(sI)
@@ -830,10 +862,13 @@ sC_boot <- subsampling_fun(sC)
 #### Jaccard index calculation
 
 ```{r}
+
+parallel::detectCores()
+
 # Induan survivors.
 induan_survivors_jaccard <- jaccard_similarity(sI_boot)
-# Induan victims.
-induan_victims_jaccard <-   jaccard_similarity(sV_boot)
+# Changhsingian victims.
+changhsingian_victims_jaccard <-   jaccard_similarity(sV_boot)
 # Changhsingian survivals.
 changhsingian_survivors_jaccard <- jaccard_similarity(sC_boot)
 ```
@@ -848,9 +883,9 @@ aIsJ <-
   summarise(avg_jaccard = mean(jaccard_similarity)) |> 
   rename("x.cell" = "cell_x", "y.cell" = "cell_y")
 
-# Mean jaccard for the Induan victims.
-aIvJ <- 
-  bind_rows(induan_victims_jaccard) |>
+# Mean jaccard for the Changhsingian victims.
+aCvJ <- 
+  bind_rows(changhsingian_victims_jaccard) |>
   group_by(cell_x, cell_y) |> 
   summarise(avg_jaccard = mean(jaccard_similarity)) |> 
   rename("x.cell" = "cell_x", "y.cell" = "cell_y")
@@ -866,10 +901,10 @@ aCsJ <-
 **Visualize results**
 
 ```{r}
-# Induan results: survivors & victims.
+# Induan results: survivors.
 mRes_01 <- induan_res_matrix[,c(1:7,10)] |> left_join(aIsJ,by = c("x.cell","y.cell"))
-mRes_02 <- induan_res_matrix[,c(1:7,10)] |> left_join(aIvJ,by = c("x.cell","y.cell"))
-# Changhsingian results: survivors.
+# Changhsingian results: survivors & victims.
+mRes_02 <- changhsingian_res_matrix[,c(1:7,10)] |> left_join(aCvJ,by = c("x.cell","y.cell"))
 mRes_03 <- changhsingian_res_matrix[,c(1:7,10)] |> left_join(aCsJ,by = c("x.cell","y.cell"))
 
 # Summary statistics for each survival category.
@@ -891,7 +926,7 @@ sumRes_07 <-
   mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
   as.data.frame()
 
-# Induan victims.
+# Changhsingian victims.
 sumRes_08 <-
   mRes_02 |> 
   group_by(cutdist) |> 
@@ -902,11 +937,11 @@ sumRes_08 <-
     n = n(),
     se = sdev/sqrt(n)
   ) |> 
-  mutate(label = 'Induan victims',label = as.factor(label)) |> 
+  mutate(label = 'Changhsingian victims',label = as.factor(label)) |> 
   mutate(cutdist = cutdist,
          cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
   mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
-  as.data.frame()
+  as.data.frame() |> suppressWarnings()
 
 # Changhsingian survivors.
 sumRes_09 <-
@@ -931,11 +966,13 @@ sumRes_10 <- bind_rows(sumRes_07,sumRes_08,sumRes_09)
 # Plot.
 sumRes_10 |> 
   ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
-  geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
+  # geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
+  # Standard devition.
+  geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1, alpha=0.7) +
   geom_line() +
   scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
-  # Joods colour of choise.
+  # Joods color of choose.
   scale_fill_manual(values =  c("lightseagreen","slateblue3", "violetred")) + 
   scale_color_manual(values = c("lightseagreen","slateblue3", "violetred")) + 
   labs(x = "Great Circle Distance", 
@@ -948,8 +985,30 @@ sumRes_10 |>
         aspect.ratio = 1)
 ```
 
+#### Czekanowski index calculation
 
 ```{r}
+
+# This outputs a list with distint cell combinations and counts of taxa in each
+test <- 
+  czekanowski_data_prep(x = pbdb_sensitivity |> filter(early_interval == "Induan" & ex==0 & fad >=252.17),
+                 cell = "cell",accepted_name = "accepted_name")
+
+# Next add the minimum field to each
+ubb <- purrr::map(test, ~.x |> mutate(minimum = pmin(count_cell_x, count_cell_y)))
+# Next compute the Czekanowski index
+iii <- lapply(ubb, czekanowski_similarity)
+
+
+
+
+```
+
+
+
+```{r}
+
+
 
 ```
 
