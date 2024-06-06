@@ -171,8 +171,8 @@ pbdb <-
 
 # Select variables.
 pbdb <- pbdb |> 
-  select(any_of(c("cell","early_interval","interval.ma","accepted_name",
-                  "lat","long","ex","phylum","class","paleolat",
+  select(any_of(c("cell","early_interval","interval.ma","occurrence_no","fad","lad",
+                  "accepted_name","lat","long","ex","phylum","class","paleolat",
                   "paleolng","collection_no","reference_no")))
 
 # Data balance.
@@ -345,7 +345,7 @@ boot_induan <- purrr::map(1:999, ~ { induan_split |>
 As indicated in the previous section, we here combine cell-specific dataframes (N=13) into single joint dataframes (13*20 = 260 rows). This is repeated for all 999 sub-sampled dataframes. Worthy of note, the cells in the Induan list, will inevitably vary between the subsampled datasets, whereas, in the case of the Changhsingian they are all identical. This is because our analysis seeks to assess the impact by cell heterogeneity across geologic stages.
 
 ```{r}
-# Changhsingian
+# Changhsingian.
 combined_boot_changhsingian <- 
   list()
 
@@ -354,7 +354,7 @@ for(i in seq_along(boot_changhsingian)) {
   combined_boot_changhsingian[[i]] <- pC
 }
 
-# Induan
+# Induan.
 combined_boot_induan <- 
   list()
 
@@ -371,13 +371,13 @@ For each subsampled dataset in both the Induan and Changhsingian lists we here c
 ```{r message=FALSE}
 # Changhsingian.
 ch_count_ls <- 
-  purrr::map(combined_boot_changhsingian, ~ .x |> group_by(accepted_name, cell) |> summarise(occs = n(), .groups = 'drop')) |> 
+  purrr::map(combined_boot_changhsingian, ~ .x |> group_by(cell,accepted_name) |> summarise(occs = n(), .groups = 'drop')) |> 
   lapply(as.data.frame) |> 
   bind_rows()
 
 # Induan.
 in_count_ls <- 
-  purrr::map(combined_boot_induan, ~ .x |> group_by(accepted_name, cell) |> summarise(occs = n(), .groups = 'drop')) |> 
+  purrr::map(combined_boot_induan, ~ .x |> group_by(cell,accepted_name) |> summarise(occs = n(), .groups = 'drop')) |> 
   lapply(as.data.frame) |> 
   bind_rows()
 ```
@@ -416,9 +416,8 @@ cells_distinct_pair_in <-
 
 **The Jaccard similiary equation**
 
-$$
-J(A,B) = \frac{|A \cap B|}{|A \cup B|}
-$$
+$$ J(Cell X, Cell Y) = \frac{|Cell X \cap Cell Y|}{|Cell X \cup Cell Y|} $$
+
 ```{r message=FALSE}
 # Changhsingian.
 changhsingian_jaccard <- 
@@ -486,7 +485,7 @@ induan_res_matrix <- cells_distinct_pair_in |>
 **Czekanowski equation**
 
 $$ Czekanowski = 2 * \frac{\sum \min(x_{1k}, x_{2k})}{\sum x_{1k} + \sum x_{2k}} $$
-The occurrence of a given taxa between distinct cells are evaluated against each other. We first define a dataframe that list all the unique cells and unique taxon name for each stage-level dataframe. For the 
+The occurrence of a given taxa between distinct cells are evaluated against each other. We first define a dataframe that list all the unique cells and unique taxon name for each stage-level dataframe.
 
 ```{r}
 # Count function.
@@ -498,7 +497,7 @@ gridComb <- function(x, cell, accepted_name) {
 # Changhsingian.
 cha_combs <- gridComb(x = changhsingian_pbdb,cell = cell,accepted_name = accepted_name) # 13*221 = 2873 rows.
 # Induan.
-ind_combs <- gridComb(x = induan_pbdb,cell = cell,accepted_name = accepted_name) # 20*93 = 1860 rows.
+ind_combs <- gridComb(x = induan_pbdb,cell = cell,accepted_name = accepted_name) # 20*93 = 1860 rows. 190 unique cell pairs (check!)
 
 # Next count the occurrence of genera per unique cell. This will also include genera with no occurrence in any given cell (i.e. 0).
 # These are subsequently removed in the next step.
@@ -569,7 +568,7 @@ czekanowski_splits <- function(joined_lists) {
 }
 
 cz_cha_prep <- czekanowski_splits(cha_joined)
-cz_ind_prep <- czekanowski_splits(ind_joined) # May or may have not worked. Return back to this step.
+cz_ind_prep <- czekanowski_splits(ind_joined)
 
 # Compute the czekanowski index.
 changhsingian_czekanowski <- vector(mode = "list")
@@ -587,7 +586,13 @@ for(i in seq_along(cz_ind_prep)) {
 # Cell pairs.
 pairs_cha <- do.call("rbind",lapply(cz_cha_prep[[1]], function(x) x[1:2][1,]))
 
-# What about the Induan??
+# Find all pairs in the Induan
+pairs_ind <- vector(mode = "list")
+
+for(i in 1:999) {
+  append_cells <- do.call("rbind",lapply(cz_ind_prep[[i]], function(x) x[1:2][1,]))
+  pairs_ind[[i]] <- append_cells
+}
 
 # Reformat 
 cha_cz_results <- 
@@ -598,8 +603,16 @@ cha_cz_results <-
                rename("x.cell" = "cell_x", "y.cell" = "cell_y")
              )
 
+ind_cz_results <- 
+  purrr::map(induan_czekanowski, ~as.data.frame(unlist(.x)) |> 
+               rename("cz" = 1))
+
+# Now bind the cell pairs to the Induan datasets.
+ind_cz_results <- mapply(function(x, y) cbind(y, x), ind_cz_results, pairs_ind, SIMPLIFY = FALSE)
+
 # Compute the average czekanowski per cell pair
-# czekanowski_dataframe <- bind_rows(cz_results)
+cha_czekanowski_dataframe <- bind_rows(cha_cz_results) |> rename("cell_x" = "x.cell", "cell_y" = "y.cell")
+ind_czekanowski_dataframe <- bind_rows(ind_cz_results)
 ```
 
 ### Results
@@ -684,63 +697,157 @@ sumRes_03 |>
   labs(x = "Great Circle Distance", 
        y = "Average Value",
        title = "Jaccard similarity index",
-       subtitle = "Bootstrap results from subsampling by cells and occurrences") +
+       subtitle = "Bootstrap results from subsampling by cells and occurrences", colour = "Stages") +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold"),
         axis.title = element_text(face = "bold"),
         aspect.ratio = 1)
 ```
 
-<!-- Notes -->
+<!-- Czekanowski -->
 
-```{r}
-# changhsingian_res_matrix <- 
-#   changhsingian_res_matrix |> 
-#   left_join(
-#     czekanowski_dataframe |> 
-#       group_by(x.cell,y.cell) |> 
-#       summarise(avg_cz =  mean(cz, na.rm = TRUE)), by = c("x.cell","y.cell")) |> 
-#   relocate(.after = "avg_jaccard","avg_cz")
+```{r message=FALSE}
+# Changhsingian
+changhsingian_res_matrix <-
+  changhsingian_res_matrix |>
+  left_join(
+    cha_czekanowski_dataframe |> rename("x.cell" = "cell_x", "y.cell" = "cell_y") |> 
+      group_by(x.cell,y.cell) |>
+      summarise(avg_cz =  mean(cz, na.rm = TRUE)), by = c("x.cell","y.cell")) |>
+  relocate(.after = "avg_jaccard","avg_cz")
 
-# Average and sd for Changhsingian.
+# Induan
+induan_res_matrix <-
+  induan_res_matrix |>
+  left_join(
+    ind_czekanowski_dataframe |> rename("x.cell" = "cell_x", "y.cell" = "cell_y") |> 
+      group_by(x.cell,y.cell) |>
+      summarise(avg_cz =  mean(cz, na.rm = TRUE)), by = c("x.cell","y.cell")) |>
+  relocate(.after = "avg_jaccard","avg_cz")
 
-# sumRes_04 <- 
-#   changhsingian_res_matrix |> 
-#   group_by(cutdist) |> 
-#   summarise(
-#     avg =  mean(avg_cz, na.rm = TRUE),
-#     sdev = sd(avg_cz, na.rm = TRUE),
-#     n = n(),
-#     se = sdev/sqrt(n)
-#   ) |> 
-#   mutate(label = 'Changhsingian',label = as.factor(label)) |> 
-#   mutate(cutdist = cutdist,
-#          cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
-#   mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
-#   as.data.frame() |> suppressWarnings() # This was added to ignore the last observation.
+# pairs_ind <- 
+#   pairs_ind |> 
+#   bind_rows() |> 
+#   filter(cell_x<cell_y) |> distinct(cell_x,cell_y)
 
+
+# Average and standard deviation for Changhsingian.
+sumRes_04 <-
+  changhsingian_res_matrix |>
+  group_by(cutdist) |>
+  summarise(
+    avg =  mean(avg_cz, na.rm = TRUE),
+    sdev = sd(avg_cz, na.rm = TRUE),
+    n = n(),
+    se = sdev/sqrt(n)
+  ) |>
+  mutate(label = 'Changhsingian',label = as.factor(label)) |>
+  mutate(cutdist = cutdist,
+         cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |>
+  mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |>
+  as.data.frame() |> suppressWarnings() # This was added to ignore the last observation.
+
+sumRes_05 <-
+  induan_res_matrix |>
+  group_by(cutdist) |>
+  summarise(
+    avg =  mean(avg_cz, na.rm = TRUE),
+    sdev = sd(avg_cz, na.rm = TRUE),
+    n = n(),
+    se = sdev/sqrt(n)
+  ) |>
+  mutate(label = 'Induan',label = as.factor(label)) |>
+  mutate(cutdist = cutdist,
+         cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |>
+  mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |>
+  as.data.frame() |> suppressWarnings()
+
+sumRes_06 <- bind_rows(sumRes_04,sumRes_05)
 
 # Plot.
-# sumRes_04 |> 
-#   ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
-#   geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
-#   geom_line() +
-#   # scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
-#   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
-#   labs(x = "Great Circle Distance", 
-#        y = "Average Value",
-#        title = "Bootstrapped Czekanowski",
-#        subtitle = "Subsampled to 13 cells with 20 randomized occurrences each") +
-#   theme_minimal() +
-#   theme(plot.title = element_text(face = "bold"),
-#         axis.title = element_text(face = "bold"),
-#         aspect.ratio = 1)
+sumRes_06 |>
+  ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
+  geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
+  geom_line() +
+  scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
+  geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
+  scale_fill_manual(values =  c("hotpink","red4")) + 
+  scale_color_manual(values = c("hotpink","red4")) + 
+  labs(x = "Great Circle Distance", 
+       y = "Average Value",
+       title = "Czekanowski similarity index",
+       subtitle = "Bootstrap results from subsampling by cells and occurrences", colour = "Stages") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"),
+        axis.title = element_text(face = "bold"),
+        aspect.ratio = 1)
 ```
 
-## Randomizing locations
+## Sensitivty analysis
 
 ```{r}
+#' @ex=1 in the pbdb are the victims.
+#' @ex=0 in the pbdb are the survivors.
 
+# Retain occurrences with or greater than 15.
+pbdb_sensitivity <- 
+  pbdb |> 
+  filter(occs >= 15) # 3578 observations.
+
+# Determine cell frequency over survival/victim data.
+pbdb_sensitivity |> 
+  group_by(ex,early_interval) |> 
+  summarize(unique_cells = n_distinct(cell)) # Changhsingian victims are not needed.
+
+# Split survival datasets by unique cell id.
+sI <- pbdb_sensitivity |> 
+  filter(early_interval == "Induan" & ex==0 & fad >=252.17) |>
+  group_split(cell_id) |> lapply(as.data.frame)
+
+sV <- pbdb_sensitivity |>
+  filter(early_interval == "Induan" & ex==1 & fad >= 252.17) |>
+  group_split(cell_id) |> lapply(as.data.frame)
+
+# Changhsingian survivals.
+sC <- pbdb_sensitivity |> filter(early_interval  == "Changhsingian" & ex==0) |>
+  group_split(cell_id) |> lapply(as.data.frame)
+
+# Bootstrap subsampling.
+set.seed(5)
+
+sI_boot <- purrr::map(1:999, ~ { sI |> sample(13,replace = F) })
+sV_boot <- purrr::map(1:999, ~ { sV |> sample(13,replace = F) })
+sC_boot <- purrr::map(1:999, ~ { sC |> sample(13,replace = F) })
+
+# Next step is to bind them.
+sI_boot_combined <- list()
+
+for(i in seq_along(sI_boot)) {
+  sic <- purrr::map_dfr(sI_boot[[i]], bind_rows)
+  sI_boot_combined[[i]] <- sic
+}
+
+sV_boot_combined <- list()
+
+#
+for(i in seq_along(sV_boot)) {
+  svC <- purrr::map_dfr(sV_boot[[i]], bind_rows)
+  sV_boot_combined[[i]] <- svC
+}
+
+#
+sC_boot_combined <- list()
+
+for(i in seq_along(sC_boot)) {
+  scc <- purrr::map_dfr(sC_boot[[i]], bind_rows)
+  sC_boot_combined[[i]] <- scc
+}
+
+```
+
+
+```{r}
+sC_boot |> View()
 ```
 
 
