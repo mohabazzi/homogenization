@@ -785,6 +785,8 @@ sumRes_06 |>
 
 ## Sensitivty analysis
 
+This section needs to be explained.
+
 ```{r}
 #' @ex=1 in the pbdb are the victims.
 #' @ex=0 in the pbdb are the survivors.
@@ -793,11 +795,6 @@ sumRes_06 |>
 pbdb_sensitivity <- 
   pbdb |> 
   filter(occs >= 15) # 3578 observations.
-
-# Determine cell frequency over survival/victim data.
-pbdb_sensitivity |> 
-  group_by(ex,early_interval) |> 
-  summarize(unique_cells = n_distinct(cell)) # Changhsingian victims are not needed.
 
 # Split survival datasets by unique cell id.
 sI <- pbdb_sensitivity |> 
@@ -813,41 +810,147 @@ sC <- pbdb_sensitivity |> filter(early_interval  == "Changhsingian" & ex==0) |>
   group_split(cell_id) |> lapply(as.data.frame)
 
 # Bootstrap subsampling.
-set.seed(5)
-
-sI_boot <- purrr::map(1:999, ~ { sI |> sample(13,replace = F) })
-sV_boot <- purrr::map(1:999, ~ { sV |> sample(13,replace = F) })
-sC_boot <- purrr::map(1:999, ~ { sC |> sample(13,replace = F) })
-
-# Next step is to bind them.
-sI_boot_combined <- list()
-
-for(i in seq_along(sI_boot)) {
-  sic <- purrr::map_dfr(sI_boot[[i]], bind_rows)
-  sI_boot_combined[[i]] <- sic
+subsampling_fun <-
+  function(x, n_boot = 999, sample_size = 13, seed = 5) {
+  set.seed(seed)
+  # Bootstrap samples.
+  boot_samples <- purrr::map(1:n_boot, ~ sample(x, sample_size, replace = FALSE))
+  # Combine cells into single dataframes.
+  comb_samples <- purrr::map(boot_samples, ~ map_dfr(.x, bind_rows))
+  
+  return(comb_samples)
 }
 
-sV_boot_combined <- list()
+# Subsampled data.
+sI_boot <- subsampling_fun(sI)
+sV_boot <- subsampling_fun(sV)
+sC_boot <- subsampling_fun(sC)
+```
 
-#
-for(i in seq_along(sV_boot)) {
-  svC <- purrr::map_dfr(sV_boot[[i]], bind_rows)
-  sV_boot_combined[[i]] <- svC
-}
+#### Jaccard index calculation
 
-#
-sC_boot_combined <- list()
+```{r}
+# Induan survivors.
+induan_survivors_jaccard <- jaccard_similarity(sI_boot)
+# Induan victims.
+induan_victims_jaccard <-   jaccard_similarity(sV_boot)
+# Changhsingian survivals.
+changhsingian_survivors_jaccard <- jaccard_similarity(sC_boot)
+```
 
-for(i in seq_along(sC_boot)) {
-  scc <- purrr::map_dfr(sC_boot[[i]], bind_rows)
-  sC_boot_combined[[i]] <- scc
-}
+**Averages**
 
+```{r message=FALSE}
+# Mean jaccard for the Induan survivors.
+aIsJ <- 
+  bind_rows(induan_survivors_jaccard) |>
+  group_by(cell_x, cell_y) |> 
+  summarise(avg_jaccard = mean(jaccard_similarity)) |> 
+  rename("x.cell" = "cell_x", "y.cell" = "cell_y")
+
+# Mean jaccard for the Induan victims.
+aIvJ <- 
+  bind_rows(induan_victims_jaccard) |>
+  group_by(cell_x, cell_y) |> 
+  summarise(avg_jaccard = mean(jaccard_similarity)) |> 
+  rename("x.cell" = "cell_x", "y.cell" = "cell_y")
+
+# Changhsingian survivals.
+aCsJ <- 
+  bind_rows(changhsingian_survivors_jaccard) |>
+  group_by(cell_x, cell_y) |> 
+  summarise(avg_jaccard = mean(jaccard_similarity)) |> 
+  rename("x.cell" = "cell_x", "y.cell" = "cell_y")
+```
+
+**Visualize results**
+
+```{r}
+# Induan results: survivors & victims.
+mRes_01 <- induan_res_matrix[,c(1:7,10)] |> left_join(aIsJ,by = c("x.cell","y.cell"))
+mRes_02 <- induan_res_matrix[,c(1:7,10)] |> left_join(aIvJ,by = c("x.cell","y.cell"))
+# Changhsingian results: survivors.
+mRes_03 <- changhsingian_res_matrix[,c(1:7,10)] |> left_join(aCsJ,by = c("x.cell","y.cell"))
+
+# Summary statistics for each survival category.
+
+# Induan survivors.
+sumRes_07 <-
+  mRes_01 |> 
+  group_by(cutdist) |> 
+  summarise(
+    # Jaccard
+    avg =  mean(avg_jaccard, na.rm = TRUE),
+    sdev = sd(avg_jaccard, na.rm = TRUE),
+    n = n(),
+    se = sdev/sqrt(n)
+  ) |> 
+  mutate(label = 'Induan survivors',label = as.factor(label)) |> 
+  mutate(cutdist = cutdist,
+         cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
+  mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
+  as.data.frame()
+
+# Induan victims.
+sumRes_08 <-
+  mRes_02 |> 
+  group_by(cutdist) |> 
+  summarise(
+    # Jaccard
+    avg =  mean(avg_jaccard, na.rm = TRUE),
+    sdev = sd(avg_jaccard, na.rm = TRUE),
+    n = n(),
+    se = sdev/sqrt(n)
+  ) |> 
+  mutate(label = 'Induan victims',label = as.factor(label)) |> 
+  mutate(cutdist = cutdist,
+         cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
+  mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
+  as.data.frame()
+
+# Changhsingian survivors.
+sumRes_09 <-
+  mRes_03 |> 
+  group_by(cutdist) |> 
+  summarise(
+    # Jaccard
+    avg =  mean(avg_jaccard, na.rm = TRUE),
+    sdev = sd(avg_jaccard, na.rm = TRUE),
+    n = n(),
+    se = sdev/sqrt(n)
+  ) |> 
+  mutate(label = 'Changhsingian survivors',label = as.factor(label)) |> 
+  mutate(cutdist = cutdist,
+         cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
+  mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
+  as.data.frame() |> suppressWarnings()
+
+# Combine all results.
+sumRes_10 <- bind_rows(sumRes_07,sumRes_08,sumRes_09)
+
+# Plot.
+sumRes_10 |> 
+  ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
+  geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
+  geom_line() +
+  scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
+  geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
+  # Joods colour of choise.
+  scale_fill_manual(values =  c("lightseagreen","slateblue3", "violetred")) + 
+  scale_color_manual(values = c("lightseagreen","slateblue3", "violetred")) + 
+  labs(x = "Great Circle Distance", 
+       y = "Average Value",
+       title = "Jaccard similarity index",
+       subtitle = "", colour = "Stages") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"),
+        axis.title = element_text(face = "bold"),
+        aspect.ratio = 1)
 ```
 
 
 ```{r}
-sC_boot |> View()
+
 ```
 
 
