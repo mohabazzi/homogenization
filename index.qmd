@@ -15,7 +15,7 @@ editor_options:
 
 <div class="author-info">
 
-Jood Al Aswad<sup>1\*</sup>, Justin L. Penn<sup>2</sup>, Pedro Monarrez<sup>3</sup>, Curtis Deutsch<sup>2</sup>, Mohamad Bazzi<sup>1</sup>, Jonathan L. Payne<sup>1</sup><br>
+Jood Al Aswad<sup>1\*</sup>, Justin L. Penn<sup>2</sup>, Pedro Monarrez<sup>1</sup>, Mohamad Bazzi<sup>1</sup>, Curtis Deutsch<sup>2</sup>, Jonathan L. Payne<sup>1</sup><br>
 
 <p>
 
@@ -23,7 +23,7 @@ Jood Al Aswad<sup>1\*</sup>, Justin L. Penn<sup>2</sup>, Pedro Monarrez<sup>3</s
 
 <div class="affiliation-info">
 
-<sup>1</sup> Department of Earth and Planetary Sciences, Stanford University, 450 Jane Stanford Way, Stanford, CA 94305, USA.<br> <sup>2</sup> Department of Geosciences, Princeton University, Guyot Hall, Princeton, NJ 08544, USA.<br> <sup>3</sup> Department of Earth, Planetary, and Space Sciences, University of California, Los Angeles, CA 90095, USA.<br>
+<sup>1</sup> Department of Earth and Planetary Sciences, Stanford University, 450 Jane Stanford Way, Stanford, CA 94305, USA.<br> <sup>2</sup> Department of Geosciences, Princeton University, Guyot Hall, Princeton, NJ 08544, USA.<br>
 
 ```{=html}
 <style> 
@@ -50,7 +50,7 @@ Correspondence and requests for materials should be addressed to J.A.A [Contact]
 
 ```{r message=FALSE}
 rpkg <- c("dplyr ggplot2 readr boot divvy terra divDyn paleobioDB conflicted piggyback
-          CoordinateCleaner fossilbrush icosa tidyr tibble readr purrr downloadthis")
+          CoordinateCleaner fossilbrush icosa tidyr tibble readr purrr downloadthis ggpubr")
 
 import_pkg <- function(x)
   x |> trimws() |> strsplit("\\s+")  |> unlist() |> 
@@ -186,7 +186,7 @@ czekanowski_data_prep <- function(x, cell, accepted_name) {
 
 ## Paleobiology Database
 
-Testing coordinate validity resulted in the removal of 17 records.
+The fossil occurrence data analysed in this study wa retrieved from the [Paleobiology Database](<https://paleobiodb.org/#/>) on February of 2024. Data pre-processing made use of functions from the `fossilbrush` and `CoordinateCleaner` R packages.
 
 ```{r message=FALSE}
 # Read occurrence dataset.
@@ -225,7 +225,7 @@ pbdb |>
 
 ## Data pre-processing
 
-Needs to explain why degrees is set to five.
+The globe is divided into a grid of equal-area icosahedral hexagonal cells using the `hexagrid()` function in `iscosa`. In `hexagrid(deg = x)`, is roughly equivalent to longitudinal degrees, so that a degree of 1 is roughly equal to 111 km. This selects a tessellation vector, which translates to the amount of area you select for each cell. In our specified grid, each cell is roughly 600,000 km^2^ and results in a grid of 642 cells.
 
 ```{r message=FALSE}
 # Create equal-area icosahedral hexagonal cells.
@@ -326,6 +326,19 @@ pbdb |>
         axis.text  = element_text(size = 8),
         axis.title = element_text(face = "bold"),
         strip.text = element_text(face = "bold"))
+```
+
+```{r}
+# Map visual.
+plot(hexa, table(changhsingian_pbdb$cell), crs="ESRI:54009", 
+     pal=c("#440154FF", "#2D708EFF", "#29AF7FFF", "#FDE725FF"), 
+     breaks = c(0, 20, 50, 75, 100),
+     reset=FALSE,main = "Changhsingian cell coverage")
+
+plot(hexa, table(induan_pbdb$cell), crs="ESRI:54009", 
+     pal=c("#440154FF", "#2D708EFF", "#29AF7FFF", "#FDE725FF"), 
+     breaks = c(0, 20, 50, 75, 100),
+     reset=FALSE,main = "Induan cell coverage")
 ```
 
 For each stage we create individual dataframes based on the cell units and store these into separate lists.
@@ -514,7 +527,7 @@ induan_res_matrix <- cells_distinct_pair_in |>
 **Czekanowski equation**
 
 $$ Czekanowski = 2 * \frac{\sum \min(x_{1k}, x_{2k})}{\sum x_{1k} + \sum x_{2k}} $$
-The occurrence of a given taxa between distinct cells are evaluated against each other. We first define a dataframe that list all the unique cells and unique taxon name for each stage-level dataframe.
+The occurrence of a given taxa between distinct cells are evaluated against each other.
 
 ```{r}
 # Changhsingian.
@@ -710,19 +723,20 @@ sumRes_03 <- bind_rows(sumRes_01,sumRes_02)
 # Plot.
 sumRes_03 |> 
   ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
-  geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1, alpha=0.7) +
-  geom_line() +
+  geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1) +
+  geom_line(linewidth = 1.2) +
   scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
-  scale_fill_manual(values =  c("hotpink","red4")) + 
-  scale_color_manual(values = c("hotpink","red4")) + 
-  labs(x = "Great Circle Distance", 
-       y = "Average Value",
-       title = "Jaccard similarity index",
-       subtitle = "Bootstrap results from subsampling by cells and occurrences", colour = "Stages") +
-  theme_minimal() +
+  scale_fill_manual(values =  c("deepskyblue","dodgerblue4")) + 
+  scale_color_manual(values = c("deepskyblue","dodgerblue4")) + 
+  labs(x = "Great Circle Distance (km)", 
+       y = "Similarity Value",
+       title = "Jaccard",
+       subtitle = "Subsampling by cells and occurrences", colour = "Stages", size = "Cell-pair comparison") +
+  theme_classic() +
   theme(plot.title = element_text(face = "bold"),
         axis.title = element_text(face = "bold"),
+        legend.title = element_text(face = "bold"),
         aspect.ratio = 1)
 ```
 
@@ -789,19 +803,20 @@ sumRes_06 <- bind_rows(sumRes_04,sumRes_05)
 # Plot.
 sumRes_06 |>
   ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
-  geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1, alpha=0.7) +
-  geom_line() +
+  geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1) +
+  geom_line(linewidth = 1.2) +
   scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
-  scale_fill_manual(values =  c("hotpink","red4")) + 
-  scale_color_manual(values = c("hotpink","red4")) + 
-  labs(x = "Great Circle Distance", 
-       y = "Average Value",
-       title = "Czekanowski similarity index",
-       subtitle = "Bootstrap results from subsampling by cells and occurrences", colour = "Stages") +
-  theme_minimal() +
+  scale_fill_manual(values =  c("deepskyblue","dodgerblue4")) + 
+  scale_color_manual(values = c("deepskyblue","dodgerblue4")) + 
+  labs(x = "Great Circle Distance (km)", 
+       y = "Similarity Value",
+       title = "Czekanowski",
+       subtitle = "Subsampling by cells and occurrences", colour = "Stages", size = "Cell-pair comparison") +
+  theme_classic() +
   theme(plot.title = element_text(face = "bold"),
         axis.title = element_text(face = "bold"),
+        legend.title = element_text(face = "bold"),
         aspect.ratio = 1)
 ```
 
@@ -951,22 +966,20 @@ sumRes_10 <- bind_rows(sumRes_07,sumRes_08,sumRes_09)
 # Plot.
 sumRes_10 |> 
   ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
-  # geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
-  # Standard devition.
   geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1, alpha=0.7) +
-  geom_line() +
+  geom_line(linewidth = 1.2) +
   scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
-  # Joods color of choose.
   scale_fill_manual(values =  c("lightseagreen","slateblue3", "violetred")) + 
   scale_color_manual(values = c("lightseagreen","slateblue3", "violetred")) + 
-  labs(x = "Great Circle Distance", 
-       y = "Average Value",
-       title = "Jaccard similarity index",
-       subtitle = "", colour = "Stages") +
-  theme_minimal() +
+  labs(x = "Great Circle Distance (km)", 
+       y = "Similarity Value",
+       title = "Jaccard by survival status",
+       subtitle = "Subsampling by cells and occurrences", colour = "Stages", size = "Cell-pair comparison") +
+  theme_classic() +
   theme(plot.title = element_text(face = "bold"),
         axis.title = element_text(face = "bold"),
+        legend.title = element_text(face = "bold"),
         aspect.ratio = 1)
 ```
 
@@ -1154,21 +1167,18 @@ sumRes_14 <- bind_rows(sumRes_11,sumRes_12,sumRes_13)
 sumRes_14 |> 
   ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
   geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1, alpha=0.7) +
-  geom_line() +
+  geom_line(linewidth = 1.2) +
   scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
-  # Joods color of choose.
   scale_fill_manual(values =  c("lightseagreen","slateblue3", "violetred")) + 
   scale_color_manual(values = c("lightseagreen","slateblue3", "violetred")) + 
-  labs(x = "Great Circle Distance", 
-       y = "Average Value",
-       title = "Czekanowski similarity index",
-       subtitle = "", colour = "Stages") +
-  theme_minimal() +
+  labs(x = "Great Circle Distance (km)", 
+       y = "Similarity Value",
+       title = "Czekanowski by survival status",
+       subtitle = "Subsampling by cells and occurrences", colour = "Stages", size = "Cell-pair comparison") +
+  theme_classic() +
   theme(plot.title = element_text(face = "bold"),
         axis.title = element_text(face = "bold"),
+        legend.title = element_text(face = "bold"),
         aspect.ratio = 1)
 ```
-
-## Download data
-
