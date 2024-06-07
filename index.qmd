@@ -81,27 +81,6 @@ gcd.slc <- function(long1, lat1, long2, lat2) {
   return(d) 
   }
 
-#' @return calculate confidence and prediction intervals
-#' @param 
-#' @param 
-#' @export
-
-intervals <- function(xvar,alpha = 0.975) {
-  mean <- mean(xvar,na.rm = TRUE)
-  std <- sd(xvar,na.rm = TRUE)
-  n <- length(na.omit(xvar))
-  ci.s.x <- sqrt((std^2)/n)
-  pi.s.x <- std*sqrt(1 + 1/n)
-  t <- qt(alpha,df = n - 1)
-  ci.uci <- mean + t*ci.s.x
-  ci.lci <- mean - t*ci.s.x
-  pi.uci <- mean + t*pi.s.x
-  pi.lci <- mean - t*pi.s.x
-  res <- as.list(c(round(mean,4),round(std,4),n,round(t,4),round(ci.lci,4),round(ci.uci,4),round(pi.lci,4),round(pi.uci,4)))
-  names(res) <- c('mean','st.dev','N','t.stat','Lower.CI','Upper.CI','Lower.PI','Upper.PI')
-  return(res)
-}
-
 #' @return calculate jaccard similarity coefficient
 #' @param 
 #' @param 
@@ -154,11 +133,21 @@ czekanowski_similarity <- function(x) {
   2*abs(sum(x$minimum))/((sum(x$count_cell_x) + sum(x$count_cell_y)))
 }
 
+#' @return 
+#' @param 
+#' @param 
+#' @export
+
 # Cross-join function.
 gridComb <- function(x, cell, accepted_name) {
   cA <- expand.grid(cell = unique(x$cell), unique(x$accepted_name)) |> setNames(nm = c("cell","accepted_name"))
   return(cA)
 }
+
+#' @return 
+#' @param 
+#' @param 
+#' @export
 
 # Count taxon occurrence per uqniue cell combination.
 czekanowski_data_prep <- function(x, cell, accepted_name) {  
@@ -721,12 +710,11 @@ sumRes_03 <- bind_rows(sumRes_01,sumRes_02)
 # Plot.
 sumRes_03 |> 
   ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
-  geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
+  geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1, alpha=0.7) +
   geom_line() +
   scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
-  # Joods colour of choise.
-  scale_fill_manual(values = c("hotpink","red4")) + 
+  scale_fill_manual(values =  c("hotpink","red4")) + 
   scale_color_manual(values = c("hotpink","red4")) + 
   labs(x = "Great Circle Distance", 
        y = "Average Value",
@@ -801,7 +789,7 @@ sumRes_06 <- bind_rows(sumRes_04,sumRes_05)
 # Plot.
 sumRes_06 |>
   ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
-  geom_errorbar(aes(ymin = pmax(avg-ci,0), ymax=avg+ci), width=0.05,linewidth=1, alpha=0.7) +
+  geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1, alpha=0.7) +
   geom_line() +
   scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
   geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
@@ -862,13 +850,10 @@ sC_boot <- subsampling_fun(sC)
 #### Jaccard index calculation
 
 ```{r}
-
-parallel::detectCores()
-
 # Induan survivors.
 induan_survivors_jaccard <- jaccard_similarity(sI_boot)
 # Changhsingian victims.
-changhsingian_victims_jaccard <-   jaccard_similarity(sV_boot)
+changhsingian_victims_jaccard <- jaccard_similarity(sV_boot)
 # Changhsingian survivals.
 changhsingian_survivors_jaccard <- jaccard_similarity(sC_boot)
 ```
@@ -987,31 +972,203 @@ sumRes_10 |>
 
 #### Czekanowski index calculation
 
-```{r}
-
-# This outputs a list with distint cell combinations and counts of taxa in each
-test <- 
-  czekanowski_data_prep(x = pbdb_sensitivity |> filter(early_interval == "Induan" & ex==0 & fad >=252.17),
-                 cell = "cell",accepted_name = "accepted_name")
-
-# Next add the minimum field to each
-ubb <- purrr::map(test, ~.x |> mutate(minimum = pmin(count_cell_x, count_cell_y)))
-# Next compute the Czekanowski index
-iii <- lapply(ubb, czekanowski_similarity)
-
-
-
-
-```
-
-
+**Induan survivors**
 
 ```{r}
+# Data table 
+prep_Is <- map(sI_boot, ~ czekanowski_data_prep(.x, cell = "cell", accepted_name = "accepted_name"))
+# Add minimum field to each data sub-list.
+prep_Is <- map(prep_Is, ~ map(.x, ~ mutate(.x, minimum = pmin(count_cell_x, count_cell_y))))
 
+# Compute czekanowski
+cz_Is <- vector(mode = "list")
+for(i in seq_along(prep_Is)) {
+  cZ <- lapply(prep_Is[[i]],czekanowski_similarity)
+  cz_Is[[i]] <- cZ
+}
 
+# Find all pairs.
+sp_01 <- vector(mode = "list")
+for(i in 1:999) {
+  pA <- do.call("rbind",lapply(prep_Is[[i]], function(x) x[1:2][1,]))
+  sp_01[[i]] <- pA
+}
 
+# Convert to dataframe and unlist.
+flat_Is <- purrr::map(cz_Is, ~as.data.frame(unlist(.x)) |> rename("cz" = 1))
+# Append correctly.
+append_flat_Is <- mapply(function(x, y) cbind(y, x), flat_Is, sp_01, SIMPLIFY = FALSE)
+
+# Compute the average czekanowski per cell-pair.
+res_Is <- bind_rows(append_flat_Is) |> rename("x.cell" = "cell_x", "y.cell" = "cell_y")
 ```
 
+**Changhsingian victims**
+
+```{r}
+# Data table 
+prep_Cv <- map(sV_boot, ~ czekanowski_data_prep(.x, cell = "cell", accepted_name = "accepted_name"))
+# Add minimum field to each data sub-list.
+prep_Cv <- map(prep_Cv, ~ map(.x, ~ mutate(.x, minimum = pmin(count_cell_x, count_cell_y))))
+
+# Compute czekanowski
+cz_Cv <- vector(mode = "list")
+for(i in seq_along(prep_Cv)) {
+  cZ <- lapply(prep_Cv[[i]],czekanowski_similarity)
+  cz_Cv[[i]] <- cZ
+}
+
+# Find all pairs.
+sp_02 <- vector(mode = "list")
+for(i in 1:999) {
+  pQ <- do.call("rbind",lapply(prep_Cv[[i]], function(x) x[1:2][1,]))
+  sp_02[[i]] <- pQ
+}
+
+# Convert to dataframe and unlist.
+flat_Cv <- purrr::map(cz_Cv, ~as.data.frame(unlist(.x)) |> rename("cz" = 1))
+# Append correctly.
+append_flat_Cv <- mapply(function(x, y) cbind(y, x), flat_Cv, sp_02, SIMPLIFY = FALSE)
+
+# Compute the average czekanowski per cell-pair.
+res_Cv <- bind_rows(append_flat_Cv) |> rename("x.cell" = "cell_x", "y.cell" = "cell_y")
+```
+
+**Changhsingian survivors**
+
+```{r}
+# Data table 
+prep_Cs <- map(sC_boot, ~ czekanowski_data_prep(.x, cell = "cell", accepted_name = "accepted_name"))
+# Add minimum field to each data sub-list.
+prep_Cs <- map(prep_Cs, ~ map(.x, ~ mutate(.x, minimum = pmin(count_cell_x, count_cell_y))))
+
+# Compute czekanowski
+cz_Cs <- vector(mode = "list")
+for(i in seq_along(prep_Cs)) {
+  cM <- lapply(prep_Cs[[i]],czekanowski_similarity)
+  cz_Cs[[i]] <- cM
+}
+
+# Find all pairs.
+sp_03 <- vector(mode = "list")
+for(i in 1:999) {
+  pO <- do.call("rbind",lapply(prep_Cs[[i]], function(x) x[1:2][1,]))
+  sp_03[[i]] <- pO
+}
+
+# Convert to dataframe and unlist.
+flat_Cs <- purrr::map(cz_Cs, ~as.data.frame(unlist(.x)) |> rename("cz" = 1))
+# Append correctly.
+append_flat_Cs <- mapply(function(x, y) cbind(y, x), flat_Cs, sp_03, SIMPLIFY = FALSE)
+
+# Compute the average czekanowski per cell-pair.
+res_Cs <- bind_rows(append_flat_Cs) |> rename("x.cell" = "cell_x", "y.cell" = "cell_y")
+```
+
+```{r message=FALSE}
+# Averages.
+ave_s1 <- res_Is |> 
+  group_by(x.cell,y.cell) |>
+  summarise(avg_cz =  mean(cz, na.rm = TRUE))
+
+ave_s2 <- res_Cv |> 
+  group_by(x.cell,y.cell) |>
+  summarise(avg_cz =  mean(cz, na.rm = TRUE))
+
+ave_s3 <- res_Cs |> 
+  group_by(x.cell,y.cell) |>
+  summarise(avg_cz =  mean(cz, na.rm = TRUE))
+```
+
+**Visualize results**
+
+```{r}
+# Reverse cell pairs first.
+ave_s1_reversed <- ave_s1|> rename("x.cell" = "y.cell", "y.cell" = "x.cell")
+ave_s2_reversed <- ave_s2|> rename("x.cell" = "y.cell", "y.cell" = "x.cell")
+ave_s3_reversed <- ave_s3|> rename("x.cell" = "y.cell", "y.cell" = "x.cell")
+
+# Induan results: survivors.
+qRes_01 <- induan_res_matrix[,c(1:7,10)] |> inner_join(ave_s1_reversed, by = c("x.cell","y.cell"))
+# Changhsingian results: survivors & victims.
+qRes_02 <- ave_s2_reversed |> 
+  left_join(changhsingian_res_matrix[,c(1:7,10)],by = c("x.cell","y.cell"))
+
+qRes_03 <- ave_s3_reversed |> 
+  left_join(changhsingian_res_matrix[,c(1:7,10)],by = c("x.cell","y.cell"))
+
+# Summary statistics for each survival category.
+
+# Induan survivors.
+sumRes_11 <-
+  qRes_01 |> 
+  group_by(cutdist) |> 
+  summarise(
+    avg =  mean(avg_cz, na.rm = TRUE),
+    sdev = sd(avg_cz, na.rm = TRUE),
+    n = n(),
+    se = sdev/sqrt(n)
+  ) |> 
+  mutate(label = 'Induan survivors',label = as.factor(label)) |> 
+  mutate(cutdist = cutdist,
+         cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
+  mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
+  as.data.frame()
+
+# Changhsingian victims.
+sumRes_12 <-
+  qRes_02 |> 
+  group_by(cutdist) |> 
+  summarise(
+    avg =  mean(avg_cz, na.rm = TRUE),
+    sdev = sd(avg_cz, na.rm = TRUE),
+    n = n(),
+    se = sdev/sqrt(n)
+  ) |> 
+  mutate(label = 'Changhsingian victims',label = as.factor(label)) |> 
+  mutate(cutdist = cutdist,
+         cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
+  mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
+  as.data.frame() |> suppressWarnings()
+
+# Changhsingian survivors.
+sumRes_13 <-
+  qRes_03 |> 
+  group_by(cutdist) |> 
+  summarise(
+    avg =  mean(avg_cz, na.rm = TRUE),
+    sdev = sd(avg_cz, na.rm = TRUE),
+    n = n(),
+    se = sdev/sqrt(n)
+  ) |> 
+  mutate(label = 'Changhsingian survivors',label = as.factor(label)) |> 
+  mutate(cutdist = cutdist,
+         cutdist = factor(cutdist,levels = c("0","2000","4000","6000","8000","10000","12000","14000","16000","18000","20000"))) |> 
+  mutate(ci = se * qt(.975, n - 1), ci = as.numeric(ci)) |> 
+  as.data.frame() |> suppressWarnings()
+
+# Combine all results.
+sumRes_14 <- bind_rows(sumRes_11,sumRes_12,sumRes_13)
+
+# Plot.
+sumRes_14 |> 
+  ggplot(aes(x = cutdist, y = avg, group = label, colour = label, fill = label)) +
+  geom_errorbar(aes(ymin = pmax(avg-sdev), ymax=avg+sdev), width=0.05,linewidth=1, alpha=0.7) +
+  geom_line() +
+  scale_size_continuous(breaks = c(5,10,15,20,25,30)) +
+  geom_point(aes(size = n),shape = 21, fill = "white", stroke = 2) +
+  # Joods color of choose.
+  scale_fill_manual(values =  c("lightseagreen","slateblue3", "violetred")) + 
+  scale_color_manual(values = c("lightseagreen","slateblue3", "violetred")) + 
+  labs(x = "Great Circle Distance", 
+       y = "Average Value",
+       title = "Czekanowski similarity index",
+       subtitle = "", colour = "Stages") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"),
+        axis.title = element_text(face = "bold"),
+        aspect.ratio = 1)
+```
 
 ## Download data
 
